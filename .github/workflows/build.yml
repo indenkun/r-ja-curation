@@ -1,8 +1,9 @@
+
 name: build-site
 
 on:
   schedule:
-    - cron: "0 15 * * *"   # JST 0:00 相当
+    - cron: "0 15 * * *"  # JST 00:00 相当（UTC 15:00）
   workflow_dispatch:
   push:
     branches: [ main ]
@@ -25,12 +26,11 @@ jobs:
       - name: Setup R
         uses: r-lib/actions/setup-r@v2
         with:
-          r-version: '4.3.2'   # または 'release'
+          r-version: 'release'
 
-      - name: Setup dependencies (pak + sysreqs)
+      - name: Setup R dependencies (pak + sysreqs)
         uses: r-lib/actions/setup-r-dependencies@v2
         with:
-          # 必要パッケージ（DESCRIPTIONをまだ使わない前提の直接指定）
           extra-packages: >
             any::tidyRSS
             any::dplyr

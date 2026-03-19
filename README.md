@@ -1,80 +1,59 @@
-# R 日本語記事・キュレーション（Shiny + Shinylive + GitHub Pages）
+# R 日本語記事・キュレーション（A案・安定化版：Shiny + Shinylive + GitHub Pages）
 
-**R 言語の日本語記事**を毎日自動収集し、**はてなブックマーク数**をスコアとして並べ替えて表示する
-静的 Shiny サイトの雛形です。
+**R 言語の日本語記事**を毎日自動収集し、**はてなブックマーク数**でランキング表示する
+静的 Shiny サイトの雛形（A案：`tidyRSS` 継続 + 例外安全化 + Actions 安定化）です。
 
 - 収集: R スクリプト（RSS + はてブ数）
 - 表示: Shiny（Shinylive で静的化）
 - ホスト: GitHub Pages（`docs/`）
-- 更新: GitHub Actions（1日1回）
+- 更新: GitHub Actions（1日1回、**pak + sysreqs 解決**）
 
 ---
 
-## ✨ できること
-- Qiita / Zenn / はてな IT ホッテントリなどから R 関連の日本語記事を取得
-- はてブ数でランキング（人気順・新着順の切替）
-- キーワード検索、ドメイン/ソースでの絞り込み
-- 完全静的（Shinylive）なのでサーバー不要、Pages にそのまま置けます
+## 主な違い（A案の安定化）
+- `tidyRSS` の列名差を吸収する **安全な `fetch_one()`** 実装
+- `is_japanese()` / `is_r_related()` を **ベクトル対応** に修正
+- GitHub Actions を **`setup-r-dependencies@v2`** で安定化（`pak` + システム依存を自動解決）
+- Node.js 24 へ **先行 opt-in**（非推奨警告を回避）
 
-## 📁 リポジトリ構成
+## フォルダ構成
 ```
 .
 ├─ app/
-│  ├─ app.R                 # Shiny アプリ本体（Shinylive 対応）
+│  ├─ app.R                 # Shiny アプリ本体（Shinylive対応）
 │  ├─ data/
-│  │  └─ articles.json      # 収集結果（Actions が日次で更新）
+│  │  └─ articles.json      # 収集結果（Actionsで日次更新）
 │  └─ www/
-│     └─ styles.css         # はてブ風の簡易スタイル
+│     └─ styles.css         # はてブ風スタイル
 ├─ R/
-│  └─ fetch_articles.R      # RSS 収集 + はてブ数 + JSON 生成
-├─ docs/                    # Shinylive の出力（Actions が自動生成）
+│  └─ fetch_articles.R      # RSS収集 + はてブ数 + JSON生成（A案の修正）
+├─ docs/                    # Shinyliveの出力（Actionsで自動生成）
+│  └─ .nojekyll
 ├─ .github/
 │  └─ workflows/
-│     └─ build.yml          # 毎日ビルド & Pages 用コミット
+│     └─ build.yml          # 1日1回のビルド&コミット（pak + sysreqs）
 ├─ README.md
-├─ LICENSE
+├─ LICENSE (MIT)
 └─ .gitignore
 ```
 
-## 🚀 セットアップ手順
-1. **この雛形を GitHub に作成**
-   - リポジトリ名例: `r-ja-curation`
-   - もしくはローカルで `git init` → GitHub に push
+## セットアップ（最短）
+1. このテンプレートを新規リポジトリにアップロード（例：`r-ja-curation`）
+2. Settings → Pages → **Branch: `main` / Folder: `/docs`**
+3. Settings → Actions → General → Workflow permissions → **Read and write permissions**
+4. Actions → `build-site` → **Run workflow**（初回手動実行推奨）
 
-2. **GitHub Pages を有効化**
-   - Settings → Pages → **Branch: `main` / Folder: `/docs`** を選択
-
-3. **Actions の権限確認**
-   - Settings → Actions → General → Workflow permissions →
-     **"Read and write permissions"** を選択（`EndBug/add-and-commit` で push するため）
-
-4. **Actions が自動実行**
-   - 毎日（JST 0:00 相当）に自動ビルドされます
-   - 手動実行は、Actions → `build-site` → **Run workflow**
-
-> 初回は `app/data/articles.json` の空データで表示されます。Actions 実行後にリストが埋まります。
-
-## 🧰 ローカルで試す
+## ローカル試行（任意）
 ```bash
-# R パッケージを入れて JSON を生成
 Rscript R/fetch_articles.R
-
-# shinylive で静的出力（docs/ に書き出し）
 R -e 'install.packages("shinylive", repos="https://cloud.r-project.org"); shinylive::export("app", "docs")'
 ```
 
-## 🔧 収集先の追加・調整
-- 収集元は `R/fetch_articles.R` の `feeds` に追記してください
-- R 関連の判定は `r_keywords` を編集
-- 日本語判定（簡易）は `is_japanese()`。必要なら `cld3` 等で強化可能
+## 収集源の追加
+`R/fetch_articles.R` の `feeds` に RSS を追記してください。
 
-## 🧮 ランキングの調整
-`hb_count`（はてブ数）に新鮮さを掛け合わせたスコア例：
+## ランキング調整（例）
 ```r
 mutate(score = hb_count / (1 + as.numeric(difftime(Sys.time(), published, units = "days"))))
 ```
-Shiny 側のソートを `score` ベースに変えるだけで反映できます。
-
-## 📝 ライセンス
-MIT License（`LICENSE` を参照）
-
+Shiny 側を `score` でソートするように変更すれば反映されます。
