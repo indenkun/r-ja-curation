@@ -9,9 +9,9 @@ library(glue)
 `%||%` <- function(a, b) if (!is.null(a) && !is.na(a) && nchar(a) > 0) a else b
 
 ui <- page_fillable(
-  theme = bs_theme(preset = "bootstrap", bootswatch = "flatly"),
+  # ★ 修正: preset と bootswatch の同時指定をやめ、bootswatch のみ
+  theme = bs_theme(bootswatch = "flatly"),
   tags$head(
-    # パスを www/styles.css に変更（Shiny/ Shinylive とも安全）
     tags$link(rel = "stylesheet", href = "www/styles.css"),
     tags$meta(name = "viewport", content = "width=device-width, initial-scale=1")
   ),
@@ -36,7 +36,6 @@ ui <- page_fillable(
 )
 
 server <- function(input, output, session) {
-  # JSON 読み込み（shinylive でも動く想定の相対パス）
   dat <- reactiveVal(NULL)
 
   observe({
@@ -86,17 +85,13 @@ server <- function(input, output, session) {
 
     out <- items
 
-    # ソース
     if (!is.null(input$source) && length(input$source)) {
       out <- dplyr::filter(out, source %in% input$source)
     }
-
-    # ドメイン
     if (!is.null(input$domain) && length(input$domain)) {
       out <- dplyr::filter(out, domain %in% input$domain)
     }
 
-    # キーワード
     q <- stringr::str_trim(input$q %||% "")
     if (nzchar(q)) {
       qm <- stringr::str_to_lower(q)
@@ -108,7 +103,6 @@ server <- function(input, output, session) {
       )
     }
 
-    # ソート
     if (identical(input$sort, "hb")) {
       out <- dplyr::arrange(out, dplyr::desc(hb_count), dplyr::desc(published))
     } else {
@@ -124,7 +118,6 @@ server <- function(input, output, session) {
       return(div(class = "empty", "該当する記事がありません。"))
     }
 
-    # カードを生成
     lapply(seq_len(nrow(items)), function(i) {
       it <- items[i, ]
       tags$a(
