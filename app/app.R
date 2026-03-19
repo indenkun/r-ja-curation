@@ -1,0 +1,150 @@
+# app/app.R
+library(shiny)
+library(bslib)
+library(jsonlite)
+library(dplyr)
+library(stringr)
+library(glue)
+
+`%||%` <- function(a, b) if (!is.null(a) && !is.na(a) && nchar(a) > 0) a else b
+
+ui <- page_fillable(
+  theme = bs_theme(preset = "bootstrap", bootswatch = "flatly"),
+  tags$head(
+    tags$link(rel = "stylesheet", href = "styles.css"),
+    tags$meta(name = "viewport", content = "width=device-width, initial-scale=1")
+  ),
+  layout_sidebar(
+    sidebar = sidebar(
+      textInput("q", "キーワード検索", placeholder = "例: ggplot2 / tidyverse / 可視化"),
+      selectInput("sort", "表示順", choices = c("ブックマークが多い順" = "hb", "新着順" = "new")),
+      uiOutput("domain_ui"),
+      uiOutput("source_ui"),
+      div(class = "muted", textOutput("updated")),
+      hr(),
+      div(
+        class = "small muted",
+        HTML("データは RSS + はてなブックマーク数で日次更新。<br>(<code>GitHub Actions</code> + <code>Shinylive</code>)")
+      )
+    ),
+    card(
+      card_header("R言語 × 日本語記事のキュレーション"),
+      div(id = "list", uiOutput("cards"))
+    )
+  )
+)
+
+server <- function(input, output, session) {
+  # JSON 読み込み（shinylive でも動く想定の相対パス）
+  dat <- reactiveVal(NULL)
+
+  observe({
+    pth <- "data/articles.json"
+    if (!file.exists(pth)) {
+      dat(list(updated_at = NA_character_, items = data.frame()))
+      return()
+    }
+    j <- jsonlite::read_json(pth, simplifyVector = TRUE)
+    items <- tibble::as_tibble(j$items)
+    if (nrow(items)) {
+      items <- items |>
+        mutate(
+          published = as.POSIXct(published, tz = "Asia/Tokyo"),
+          date = format(published, "%Y-%m-%d %H:%M")
+        )
+    }
+    dat(list(updated_at = j$updated_at, items = items))
+  })
+
+  output$updated <- renderText({
+    d <- dat()
+    if (is.null(d) || is.null(d$updated_at) || is.na(d$updated_at)) return("")
+    paste0("更新: ", d$updated_at, " JST")
+  })
+
+  output$domain_ui <- renderUI({
+    d <- dat(); if (is.null(d)) return(NULL)
+    items <- d$items; if (!nrow(items)) return(NULL)
+    doms <- sort(unique(items$domain))
+    selectizeInput("domain", "ドメイン絞り込み", choices = doms, multiple = TRUE)
+  })
+
+  output$source_ui <- renderUI({
+    d <- dat(); if (is.null(d)) return(NULL)
+    items <- d$items; if (!nrow(items)) return(NULL)
+    srcs <- sort(unique(items$source))
+    checkboxGroupInput("source", "ソース", choices = srcs, selected = srcs, inline = FALSE)
+  })
+
+  filtered <- reactive({
+    d <- dat(); if (is.null(d)) return(tibble::tibble())
+    items <- d$items; if (!nrow(items)) return(items)
+
+    out <- items
+
+    # ソース
+    if (!is.null(input$source) && length(input$source)) {
+      out <- dplyr::filter(out, source %in% input$source)
+    }
+
+    # ドメイン
+    if (!is.null(input$domain) && length(input$domain)) {
+      out <- dplyr::filter(out, domain %in% input$domain)
+    }
+
+    # キーワード
+    q <- stringr::str_trim(input$q %||% "")
+    if (nzchar(q)) {
+      qm <- stringr::str_to_lower(q)
+      out <- dplyr::filter(
+        out,
+        stringr::str_detect(stringr::str_to_lower(title %||% ""), stringr::fixed(qm)) |
+        stringr::str_detect(stringr::str_to_lower(summary %||% ""), stringr::fixed(qm)) |
+        stringr::str_detect(stringr::str_to_lower(domain %||% ""), stringr::fixed(qm))
+      )
+    }
+
+    # ソート
+    if (identical(input$sort, "hb")) {
+      out <- dplyr::arrange(out, dplyr::desc(hb_count), dplyr::desc(published))
+    } else {
+      out <- dplyr::arrange(out, dplyr::desc(published), dplyr::desc(hb_count))
+    }
+
+    out
+  })
+
+  output$cards <- renderUI({
+    items <- filtered()
+    if (!nrow(items)) {
+      return(div(class = "empty", "該当する記事がありません。"))
+    }
+
+    # カードを生成
+    lapply(seq_len(nrow(items)), function(i) {
+      it <- items[i, ]
+      tags$a(
+        class = "card-link",
+        href = it$link, target = "_blank", rel = "noopener",
+        div(class = "card-item",
+          div(class = "thumb",
+              tags$img(src = it$thumb %||% "", alt = "thumb")),
+          div(class = "meta",
+            div(class = "title", it$title),
+            div(class = "sub",
+              span(class = "badge", paste0("★ ", it$hb_count)),
+              span(" / "),
+              span(it$domain %||% it$source %||% ""),
+              span(" / "),
+              span(it$date)
+            ),
+            div(class = "desc",
+                HTML(htmltools::htmlEscape(stringr::str_trunc(it$summary %||% "", width = 140))))
+          )
+        )
+      )
+    })
+  })
+}
+
+shinyApp(ui, server)

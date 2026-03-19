@@ -1,0 +1,46 @@
+
+name: build-site
+
+on:
+  schedule:
+    # GitHub Actions は UTC。JST 00:00 ≒ 15:00 UTC
+    - cron: "0 15 * * *"
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup R
+        uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: '4.3.2'
+
+      - name: Setup pandoc
+        uses: r-lib/actions/setup-pandoc@v2
+
+      - name: Install required packages
+        run: |
+          Rscript -e 'install.packages(c("tidyRSS","dplyr","purrr","stringr","lubridate","httr2","jsonlite","rvest","urltools","tibble","bslib","shiny","shinylive"), repos="https://cloud.r-project.org")'
+
+      - name: Fetch articles (make JSON)
+        run: Rscript R/fetch_articles.R
+
+      - name: Export Shiny app to static (Shinylive)
+        run: Rscript -e 'shinylive::export("app", "docs")'
+
+      - name: Commit & push
+        uses: EndBug/add-and-commit@v9
+        with:
+          message: "chore: daily build"
+          add: "docs app/data/articles.json"
+          default_author: github_actions
