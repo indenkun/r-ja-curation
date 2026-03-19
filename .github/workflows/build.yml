@@ -12,7 +12,6 @@ permissions:
   contents: write
 
 env:
-  # Node 24 に先行opt-in（将来の強制切替に備える）
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:

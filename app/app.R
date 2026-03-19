@@ -11,7 +11,8 @@ library(glue)
 ui <- page_fillable(
   theme = bs_theme(preset = "bootstrap", bootswatch = "flatly"),
   tags$head(
-    tags$link(rel = "stylesheet", href = "styles.css"),
+    # パスを www/styles.css に変更（Shiny/ Shinylive とも安全）
+    tags$link(rel = "stylesheet", href = "www/styles.css"),
     tags$meta(name = "viewport", content = "width=device-width, initial-scale=1")
   ),
   layout_sidebar(
@@ -40,11 +41,14 @@ server <- function(input, output, session) {
 
   observe({
     pth <- "data/articles.json"
-    if (!file.exists(pth)) {
-      dat(list(updated_at = NA_character_, items = data.frame()))
+    j <- tryCatch(jsonlite::read_json(pth, simplifyVector = TRUE), error = function(e) NULL)
+
+    if (is.null(j) || is.null(j$items)) {
+      dat(list(updated_at = NA_character_, items = tibble::tibble()))
+      showNotification("データを読み込めませんでした（articles.json が見つからない/壊れている可能性）。", type = "error")
       return()
     }
-    j <- jsonlite::read_json(pth, simplifyVector = TRUE)
+
     items <- tibble::as_tibble(j$items)
     if (nrow(items)) {
       items <- items |>
