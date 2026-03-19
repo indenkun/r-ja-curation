@@ -1,16 +1,18 @@
-
 name: build-site
 
 on:
   schedule:
-    # GitHub Actions は UTC。JST 00:00 ≒ 15:00 UTC
-    - cron: "0 15 * * *"
+    - cron: "0 15 * * *"   # JST 0:00 相当
   workflow_dispatch:
   push:
     branches: [ main ]
 
 permissions:
   contents: write
+
+env:
+  # Node 24 に先行opt-in（将来の強制切替に備える）
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   build:
@@ -23,14 +25,27 @@ jobs:
       - name: Setup R
         uses: r-lib/actions/setup-r@v2
         with:
-          r-version: '4.3.2'
+          r-version: '4.3.2'   # または 'release'
 
-      - name: Setup pandoc
-        uses: r-lib/actions/setup-pandoc@v2
-
-      - name: Install required packages
-        run: |
-          Rscript -e 'install.packages(c("tidyRSS","dplyr","purrr","stringr","lubridate","httr2","jsonlite","rvest","urltools","tibble","bslib","shiny","shinylive"), repos="https://cloud.r-project.org")'
+      - name: Setup dependencies (pak + sysreqs)
+        uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          # 必要パッケージ（DESCRIPTIONをまだ使わない前提の直接指定）
+          extra-packages: >
+            any::tidyRSS
+            any::dplyr
+            any::purrr
+            any::stringr
+            any::lubridate
+            any::httr2
+            any::jsonlite
+            any::rvest
+            any::urltools
+            any::tibble
+            any::bslib
+            any::shiny
+            any::shinylive
+          needs: check
 
       - name: Fetch articles (make JSON)
         run: Rscript R/fetch_articles.R
