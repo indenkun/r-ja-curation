@@ -12,11 +12,18 @@ library(rvest)
 library(urltools)
 library(tibble)
 
-`%||%` <- function(a, b) { if (length(a) == 0) return(b); ifelse(is.na(a) | a == "", b, a) }
+`%||%` <- function(a, b) {
+  # a が長さベクトルの場合も扱えるように
+  if (length(a) == 0) return(b)
+  a <- ifelse(is.na(a) | a == "", b, a)
+  a
+}
 
 # 日本語検知（ベクトル対応）
-is_japanese <- function(x) { x <- ifelse(is.na(x), "", x); str_detect(x, "[\
-\p{Hiragana}\p{Katakana}\p{Han}]") }
+is_japanese <- function(x) {
+  x <- ifelse(is.na(x), "", x)
+  str_detect(x, "[\\p{Hiragana}\\p{Katakana}\\p{Han}]")
+}
 
 # R関連キーワード & 除外ワード（誤検出抑制）
 r_keywords <- c("R言語","tidyverse","ggplot2","dplyr","tidyr","readr","purrr","stringr",
