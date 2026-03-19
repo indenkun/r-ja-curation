@@ -9,10 +9,9 @@ library(glue)
 `%||%` <- function(a, b) if (!is.null(a) && !is.na(a) && nchar(a) > 0) a else b
 
 ui <- page_fillable(
-  # ★ 修正: preset と bootswatch の同時指定をやめ、bootswatch のみ
   theme = bs_theme(bootswatch = "flatly"),
   tags$head(
-    tags$link(rel = "stylesheet", href = "www/styles.css"),
+    includeCSS("www/styles.css"),
     tags$meta(name = "viewport", content = "width=device-width, initial-scale=1")
   ),
   layout_sidebar(
