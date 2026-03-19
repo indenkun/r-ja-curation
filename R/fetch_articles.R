@@ -87,24 +87,34 @@ get_og_image <- function(url) {
 
 # RSSを1件取得して整形
 fetch_one <- function(src, feed_url) {
-  df <- tryCatch(tidyfeed(feed_url), error = function(e) tibble())
-  if (!nrow(df)) return(tibble())
-  # tidyRSS の列名に合わせて取り出し
-  out <- df |>
-    transmute(
-      source = src,
-      title  = coalesce(item_title, title, ""),
-      link   = coalesce(item_link, link, ""),
-      summary= coalesce(item_description, description, item_content, ""),
-      published = coalesce(item_pub_date, pub_date, as.character(Sys.time()))
-    ) |>
-    mutate(
+  df <- tryCatch(tidyRSS::tidyfeed(feed_url), error = function(e) tibble::tibble())
+  if (!nrow(df)) return(tibble::tibble())
+  
+  # 最初に存在する列を返すヘルパー
+  pick_first <- function(dat, candidates, default = "") {
+    for (nm in candidates) {
+      if (nm %in% names(dat)) return(dat[[nm]])
+    }
+    rep(default, nrow(dat))
+  }
+  
+  out <- tibble::tibble(
+    source    = src,
+    title     = pick_first(df, c("item_title", "title"), ""),
+    link      = pick_first(df, c("item_link", "link"), ""),
+    summary   = pick_first(df, c("item_description", "description", "item_content"), ""),
+    published = pick_first(df, c("item_pub_date", "pub_date"), as.character(Sys.time()))
+  ) |>
+    dplyr::mutate(
       published = suppressWarnings(lubridate::as_datetime(published)),
-      published = if_else(is.na(published), Sys.time(), published)
+      published = dplyr::if_else(is.na(published), Sys.time(), published)
     ) |>
-    filter(nzchar(link))
-  distinct(out, link, .keep_all = TRUE)
+    dplyr::filter(nzchar(link)) |>
+    dplyr::distinct(link, .keep_all = TRUE)
+  
+  out
 }
+
 
 # 収集・フィルタ・スコアリング
 articles <- pmap_dfr(feeds, ~ fetch_one(..1, ..2))
