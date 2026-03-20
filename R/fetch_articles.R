@@ -1,6 +1,6 @@
 
-# R/fetch_articles.R（Hatena検索条件とBing News RSS追加版）
-# ------------------------------------------------------------
+# R/fetch_articles.R（/q パラメータ版 + /search/text フォールバック、Bing News、Qiita Atom対応）
+# ---------------------------------------------------------------------------------
 library(tidyRSS)
 library(dplyr)
 library(purrr)
@@ -58,7 +58,7 @@ get_og_image <- function(url) {
 # 最初に存在する列を選ぶ
 pick_first <- function(dat, candidates, default = "") {
   for (nm in candidates) if (nm %in% names(dat)) return(dat[[nm]])
-  rep(default, nrow(dat))
+  rep(default, ifelse(is.null(nrow(dat)), length(dat[[1]]), nrow(dat)))
 }
 
 # Atom（例：Qiita）のXMLを xml2 で直接パースするフォールバック
@@ -130,42 +130,46 @@ qiita_feeds <- tibble(
 # 2) Zenn R トピック
 zenn_feed <- tibble(source = "Zenn", url = "https://zenn.dev/topics/r/feed")
 
-# 3) はてな：キーワードRSS（※ "R" 単独は除外）
-#    期間=直近1年、ブクマ閾値>=1、並び=新着（recent）
-#    /search/text?q=...&mode=rss&date_begin=YYYY-MM-DD&date_end=YYYY-MM-DD&threshold=1&sort=recent
-jst_today <- with_tz(Sys.time(), "Asia/Tokyo")
+# 3) はてな：/q の RSS（UIパラメータ） + /search/text フォールバック
+#    ※ "R" 単独は除外し、R関連語のみ
+hatena_keywords <- c("R言語","tidyverse","ggplot2","dplyr","Shiny")
+
+# /q 方式（HTMLエスケープは不要：&amp; ではなく &）
+hatena_q_urls <- paste0(
+  "https://b.hatena.ne.jp/q/",
+  URLencode(hatena_keywords),
+  "?mode=rss&target=all&sort=recent&users=1&date_range=y&safe=on"
+)
+
+# /search/text 方式（日付範囲を明示）
+jst_today  <- with_tz(Sys.time(), "Asia/Tokyo")
 start_date <- format(as.Date(jst_today) - 365, "%Y-%m-%d")
-end_date   <- format(as.Date(jst_today), "%Y-%m-%d")
+end_date   <- format(as.Date(jst_today),       "%Y-%m-%d")
 
-hatena_keywords <- c("R言語","tidyverse","ggplot2","dplyr","Shiny")  # ← "R" を削除
-hatena_feeds <- tibble(
-  source = "HatenaKeyword",
-  url    = paste0(
-    "https://b.hatena.ne.jp/search/text?q=",
-    URLencode(hatena_keywords),
-    "&mode=rss&date_begin=", start_date,
-    "&date_end=", end_date,
-    "&threshold=1&sort=recent"
-  )
+hatena_search_urls <- paste0(
+  "https://b.hatena.ne.jp/search/text?q=",
+  URLencode(hatena_keywords),
+  "&mode=rss&date_begin=", start_date,
+  "&date_end=", end_date,
+  "&threshold=1&sort=recent"
 )
 
-# 4) Bing News RSS（R関連の代表的キーワード）
-#    公式には &format=rss が利用可能（ニュース検索）
-#    期間の厳密指定はURLだけでは難しいため、取得後に日付フィルタを適用
-bing_queries <- c(
-  "R 言語",
-  "R tidyverse",
-  "ggplot2",
-  "R Shiny"
-)
+# /q を試し、0件なら /search/text にフォールバック
+choose_hatena_urls <- function(urls_q, urls_search) {
+  test <- tryCatch(tidyRSS::tidyfeed(urls_q[[1]]), error = function(e) tibble())
+  if (!nrow(test)) return(urls_search)
+  urls_q
+}
 
+hatena_urls <- choose_hatena_urls(hatena_q_urls, hatena_search_urls)
+
+hatena_feeds <- tibble(source = "HatenaKeyword", url = hatena_urls)
+
+# 4) Bing News RSS（代表的なクエリ）
+bing_queries <- c("R 言語","R tidyverse","ggplot2","R Shiny")
 bing_feeds <- tibble(
   source = "BingNews",
-  url    = paste0(
-    "https://www.bing.com/news/search?q=",
-    URLencode(bing_queries),
-    "&format=rss"
-  )
+  url    = paste0("https://www.bing.com/news/search?q=", URLencode(bing_queries), "&format=rss")
 )
 
 feeds <- dplyr::bind_rows(qiita_feeds, zenn_feed, hatena_feeds, bing_feeds)
@@ -182,7 +186,7 @@ if (!nrow(articles)) {
 }
 
 # ===== 後処理 =====
-# 期間フィルタ：特に Bing News を想定し、直近365日に限定
+# 期間フィルタ（特に Bing を想定）：直近365日
 articles <- articles |>
   mutate(published = suppressWarnings(lubridate::as_datetime(published))) |>
   mutate(published = if_else(is.na(published), Sys.time(), published)) |>
