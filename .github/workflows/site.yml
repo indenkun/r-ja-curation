@@ -1,11 +1,10 @@
-
 name: build-and-deploy
 
 on:
   push:
     branches: [ main ]
   schedule:
-    # JST 0:00 毎日実行（UTC 15:00）
+    # JST 0:00 (UTC 15:00)
     - cron: "0 15 * * *"
   workflow_dispatch:
 
@@ -30,12 +29,15 @@ jobs:
         with:
           use-public-rspm: true
 
-      - name: Install system deps for R packages
+      - name: Install system dependencies for R packages
         run: |
           sudo apt-get update
-          sudo apt-get install -y             libcurl4-openssl-dev libxml2-dev libssl-dev             libfontconfig1-dev libfreetype6-dev libharfbuzz-dev             libfribidi-dev libpng-dev libtiff5-dev libjpeg-dev
+          sudo apt-get install -y \
+            libcurl4-openssl-dev libxml2-dev libssl-dev \
+            libfontconfig1-dev libfreetype6-dev libharfbuzz-dev \
+            libfribidi-dev libpng-dev libtiff5-dev libjpeg-dev
 
-      - name: Install R packages (with r-universe fallback for shinylive)
+      - name: Install R packages (CRAN) and ensure shinylive via r-universe
         run: |
           Rscript -e 'install.packages(c(
             "jsonlite","dplyr","purrr","stringr","lubridate","tibble",
@@ -48,19 +50,18 @@ jobs:
               repos = c("https://posit-dev.r-universe.dev", "https://cloud.r-project.org")
             )
           }'
-          Rscript -e 'pak <- as.character(utils::packageVersion("shinylive")); cat("shinylive version:", pak, "
-")'
+          Rscript -e 'cat("shinylive version:", as.character(utils::packageVersion("shinylive")), "\n")'
 
-      - name: Ensure shinylive assets (optional but recommended)
+      - name: Ensure shinylive assets
         run: Rscript -e 'shinylive::assets_info(); shinylive::assets_ensure()'
 
-      - name: Generate JSON (articles)
+      - name: Generate JSON
         run: Rscript R/fetch_articles.R
 
-      - name: Export with Shinylive (sets <title>)
+      - name: Export with shinylive (set page title)
         run: Rscript build.R
 
-      - name: Upload artifact (docs/)
+      - name: Upload artifact (docs)
         uses: actions/upload-pages-artifact@v3
         with:
           path: docs
