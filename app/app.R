@@ -1,3 +1,4 @@
+
 # app/app.R
 library(shiny)
 library(bslib)
@@ -8,9 +9,15 @@ library(glue)
 
 `%||%` <- function(a, b) if (!is.null(a) && !is.na(a) && nchar(a) > 0) a else b
 
+# サイト名
+SITE_TITLE_JA <- "R言語 × 日本語記事のキュレーション"
+SITE_TITLE_EN <- "R Language × Japanese-language Article Curation"
+
 ui <- page_fillable(
   theme = bs_theme(bootswatch = "flatly"),
   tags$head(
+    # ブラウザタブのタイトルを明示（Shinyliveエクスポートのtitleとも整合させる）
+    tags$title(paste(SITE_TITLE_JA, "|", SITE_TITLE_EN)),
     includeCSS("www/styles.css"),
     tags$meta(name = "viewport", content = "width=device-width, initial-scale=1")
   ),
@@ -28,7 +35,12 @@ ui <- page_fillable(
       )
     ),
     card(
-      card_header("R言語 × 日本語記事のキュレーション"),
+      card_header(
+        div(class = "site-header",
+            h4(SITE_TITLE_JA),
+            div(class = "site-sub", SITE_TITLE_EN)
+        )
+      ),
       div(id = "list", uiOutput("cards"))
     )
   )
@@ -98,7 +110,8 @@ server <- function(input, output, session) {
         out,
         stringr::str_detect(stringr::str_to_lower(title %||% ""), stringr::fixed(qm)) |
         stringr::str_detect(stringr::str_to_lower(summary %||% ""), stringr::fixed(qm)) |
-        stringr::str_detect(stringr::str_to_lower(domain %||% ""), stringr::fixed(qm))
+        stringr::str_detect(stringr::str_to_lower(domain %||% ""), stringr::fixed(qm)) |
+        stringr::str_detect(stringr::str_to_lower(hit_keywords %||% ""), stringr::fixed(qm))
       )
     }
 
@@ -119,6 +132,16 @@ server <- function(input, output, session) {
 
     lapply(seq_len(nrow(items)), function(i) {
       it <- items[i, ]
+
+      # ヒットキーワードをタグ化（カンマ区切りを分割）
+      tags_vec <- character(0)
+      if (!is.null(it$hit_keywords) && !is.na(it$hit_keywords) && nchar(it$hit_keywords) > 0) {
+        parts <- strsplit(it$hit_keywords, ",")[[1]]
+        parts <- trimws(parts)
+        parts <- parts[nzchar(parts)]
+        tags_vec <- parts
+      }
+
       tags$a(
         class = "card-link",
         href = it$link, target = "_blank", rel = "noopener",
@@ -135,7 +158,10 @@ server <- function(input, output, session) {
               span(it$date)
             ),
             div(class = "desc",
-                HTML(htmltools::htmlEscape(stringr::str_trunc(it$summary %||% "", width = 140))))
+                HTML(htmltools::htmlEscape(stringr::str_trunc(it$summary %||% "", width = 140)))),
+            if (length(tags_vec)) {
+              div(class = "tags", lapply(tags_vec, function(t) span(class = "tag", t)))
+            }
           )
         )
       )

@@ -1,17 +1,28 @@
-# r-ja-curation（CSS適用 & QiitaタグRSS & はてなキーワードRSS 版）
 
-この版では以下を修正しています：
+# R言語 × 日本語記事のキュレーション / R Language × Japanese-language Article Curation
 
-- Shiny の CSS を `includeCSS("www/styles.css")` で**インライン展開**し、Shinylive 環境でも確実にスタイルが適用されるようにしました（`tags$link` から変更）。
-- Qiita のタグRSSを**正しいフォーマット** `https://qiita.com/tags/r/feed.atom` に修正しました。
-- はてなブックマークの IT ホッテントリを廃止し、**キーワード検索RSS**（例：`https://b.hatena.ne.jp/q/R言語?mode=rss`）に置き換えてノイズを削減しました。
+このパッケージは、以下の3点を一括反映した差し替え用 ZIP です。
 
-## 使い方（既存リポジトリに上書き）
-1. この ZIP を展開し、既存リポジトリの同名ファイルを置き換え
-2. コミット & Push
-3. Actions の `build-site` を手動実行（初回は推奨）
-4. 公開 URL をハードリロード（Service Worker のキャッシュを回避）
+1. **ブラウザタブのタイトル**をサイト名に合わせる（UIの`<head>`に`<title>`を明示）。
+2. **カードの3〜4列グリッド表示**（CSS Grid）。
+3. **どの検索語でヒットしたか**をJSON (`hit_keywords`) に保存し、カード下部にタグ表示。
 
-## 変更ファイル
-- `app/app.R`：`includeCSS` 採用、テーマは `bs_theme(bootswatch = "flatly")` のみ
-- `R/fetch_articles.R`：フィード集合の見直し（QiitaタグRSS、ZennトピックRSS、はてなキーワードRSS）
+> 補足：Shinylive でエクスポートする場合は、`shinylive::export(..., template_params=list(title="サイト名"))` を併用すると、出力HTMLの`<title>`が確実に上書きされます（UI側の`<title>`も併用しています）。
+
+---
+
+## 置き換え対象
+- `app/app.R`
+- `app/www/styles.css`
+- `R/fetch_articles.R`
+
+`app/data/articles.json` はプレースホルダです（初回ビルドで上書きされます）。
+
+---
+
+## 反映手順
+1. 本 ZIP を展開し、既存リポジトリの同名ファイルを**上書き**。
+2. Commit & Push。
+3. GitHub Actions の `build-site` を実行。
+4. 公開サイトをハードリロード（Service Worker キャッシュ回避）。
+
