@@ -1,28 +1,16 @@
 
-# R言語 × 日本語記事のキュレーション / R Language × Japanese-language Article Curation
+# r-ja-curation-design-v2
 
-このパッケージは、以下の3点を一括反映した差し替え用 ZIP です。
+- タイトル `<title>` を UI 側で明示。Shinylive エクスポート時は `template_params$title` を併用推奨。
+- カード 3〜4 列の CSS Grid。
+- `hit_keywords` を JSON に保存してカードに表示。
+- はてな・Bing の検索語を更新：**Shiny を除外**、**tidymodels / readr / stringr / rlang** を追加。
 
-1. **ブラウザタブのタイトル**をサイト名に合わせる（UIの`<head>`に`<title>`を明示）。
-2. **カードの3〜4列グリッド表示**（CSS Grid）。
-3. **どの検索語でヒットしたか**をJSON (`hit_keywords`) に保存し、カード下部にタグ表示。
+## 注意
+- Shinylive の出力 HTML によっては、`template_params$title` がないと `<title>` が "shiny app" になることがあります。ワークフロー側で次のように指定してください：
 
-> 補足：Shinylive でエクスポートする場合は、`shinylive::export(..., template_params=list(title="サイト名"))` を併用すると、出力HTMLの`<title>`が確実に上書きされます（UI側の`<title>`も併用しています）。
+```r
+shinylive::export(appdir = "app", destdir = "docs", template_params = list(title = "R言語 × 日本語記事のキュレーション"))
+```
 
----
-
-## 置き換え対象
-- `app/app.R`
-- `app/www/styles.css`
-- `R/fetch_articles.R`
-
-`app/data/articles.json` はプレースホルダです（初回ビルドで上書きされます）。
-
----
-
-## 反映手順
-1. 本 ZIP を展開し、既存リポジトリの同名ファイルを**上書き**。
-2. Commit & Push。
-3. GitHub Actions の `build-site` を実行。
-4. 公開サイトをハードリロード（Service Worker キャッシュ回避）。
-
+その上で、公開後に **ハードリロード** や **Service Worker の更新**を行ってください。

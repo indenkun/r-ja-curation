@@ -1,5 +1,5 @@
 
-# R/fetch_articles.R（pmapの引数ずれ修正版：feeds列順を source,url,query に統一）
+# R/fetch_articles.R（キーワード更新：Shiny除外 + tidymodels/readr/stringr/rlang追加）
 # ---------------------------------------------------------------------------------
 library(tidyRSS)
 library(dplyr)
@@ -15,11 +15,10 @@ library(xml2)
 
 `%||%` <- function(a, b) { if (length(a) == 0) return(b); ifelse(is.na(a) | a == "", b, a) }
 
-# ----------------- 共通ユーティリティ -----------------
 is_japanese <- function(x) { x <- ifelse(is.na(x), "", x); str_detect(x, "[\\p{Hiragana}\\p{Katakana}\\p{Han}]") }
 
 r_keywords <- c("R言語","tidyverse","ggplot2","dplyr","tidyr","readr","purrr","stringr",
-                "lubridate","data\\.table","Shiny","shinylive","Quarto","R Markdown","R ")
+                "lubridate","data\\.table","shinylive","Quarto","R Markdown","R ")
 exclude_keywords <- c("React","React\\.js","RPG","RISC","RHEL","ruby on rails")
 
 is_r_related <- function(title, summary = "") {
@@ -57,7 +56,7 @@ pick_first <- function(dat, candidates, default = "") {
 }
 
 parse_atom_with_xml2 <- function(feed_url, src, q) {
-  if (!grepl("^https?://", feed_url)) return(tibble())  # 相対パス等を即時除外
+  if (!grepl("^https?://", feed_url)) return(tibble())
   doc <- tryCatch(xml2::read_xml(feed_url), error = function(e) NULL)
   if (is.null(doc)) return(tibble())
   ns <- c(d1 = "http://www.w3.org/2005/Atom")
@@ -91,10 +90,7 @@ parse_atom_with_xml2 <- function(feed_url, src, q) {
 }
 
 fetch_one <- function(src, feed_url, q) {
-  # フィードURLの妥当性チェック
-  if (!grepl("^https?://", feed_url)) {
-    return(tibble())
-  }
+  if (!grepl("^https?://", feed_url)) return(tibble())
   df <- tryCatch(tidyRSS::tidyfeed(feed_url), error = function(e) tibble())
   out <- tibble()
   if (nrow(df)) {
@@ -119,16 +115,16 @@ fetch_one <- function(src, feed_url, q) {
   out
 }
 
-# ------------------ フィード定義（例） ------------------
+# ------------------ フィード定義 ------------------
 qiita_feeds <- tibble(
   source = "Qiita",
   query  = "r",
   url    = c("https://qiita.com/tags/r/feed.atom", "https://qiita.com/tags/r/feed")
 )
-
 zenn_feeds <- tibble(source = "Zenn", query = "r", url = "https://zenn.dev/topics/r/feed")
 
-hatena_keywords <- c("R言語","tidyverse","ggplot2","dplyr","Shiny")
+# ★ はてなキーワード（Shinyを削除し、tidymodels/readr/stringr/rlang を追加）
+hatena_keywords <- c("R言語","tidyverse","ggplot2","dplyr","tidymodels","readr","stringr","rlang")
 
 hatena_q <- tibble(
   source = "HatenaKeyword",
@@ -159,17 +155,16 @@ hatena_search <- tibble(
 try_q <- tryCatch(tidyRSS::tidyfeed(hatena_q$url[[1]]), error = function(e) tibble())
 hatena_feeds <- if (nrow(try_q)) hatena_q else hatena_search
 
-bing_queries <- c("R 言語","R tidyverse","ggplot2","R Shiny")
+# ★ Bing クエリも追加・整備（Shinyを含めない）
+bing_queries <- c("R 言語","R tidyverse","ggplot2","tidymodels","readr","stringr","rlang")
+
 bing_feeds <- tibble(
   source = "BingNews",
   query  = bing_queries,
   url    = paste0("https://www.bing.com/news/search?q=", URLencode(bing_queries), "&format=rss")
 )
 
-feeds <- dplyr::bind_rows(qiita_feeds, zenn_feeds, hatena_feeds, bing_feeds)
-
-# ★ 列順を source, url, query に固定（pmap の引数順を保証）
-feeds <- feeds |>
+feeds <- dplyr::bind_rows(qiita_feeds, zenn_feeds, hatena_feeds, bing_feeds) |>
   dplyr::select(source, url, query)
 
 # ------------------ 収集 ------------------

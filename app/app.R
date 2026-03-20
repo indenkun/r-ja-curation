@@ -16,7 +16,6 @@ SITE_TITLE_EN <- "R Language × Japanese-language Article Curation"
 ui <- page_fillable(
   theme = bs_theme(bootswatch = "flatly"),
   tags$head(
-    # ブラウザタブのタイトルを明示（Shinyliveエクスポートのtitleとも整合させる）
     tags$title(paste(SITE_TITLE_JA, "|", SITE_TITLE_EN)),
     includeCSS("www/styles.css"),
     tags$meta(name = "viewport", content = "width=device-width, initial-scale=1")
@@ -29,9 +28,8 @@ ui <- page_fillable(
       uiOutput("source_ui"),
       div(class = "muted", textOutput("updated")),
       hr(),
-      div(
-        class = "small muted",
-        HTML("データは RSS + はてなブックマーク数で日次更新。<br>(<code>GitHub Actions</code> + <code>Shinylive</code>)")
+      div(class = "small muted",
+          HTML("データは RSS + はてなブックマーク数で日次更新。<br>(<code>GitHub Actions</code> + <code>Shinylive</code>)")
       )
     ),
     card(
@@ -133,7 +131,6 @@ server <- function(input, output, session) {
     lapply(seq_len(nrow(items)), function(i) {
       it <- items[i, ]
 
-      # ヒットキーワードをタグ化（カンマ区切りを分割）
       tags_vec <- character(0)
       if (!is.null(it$hit_keywords) && !is.na(it$hit_keywords) && nchar(it$hit_keywords) > 0) {
         parts <- strsplit(it$hit_keywords, ",")[[1]]
