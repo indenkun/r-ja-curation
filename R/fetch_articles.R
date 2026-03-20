@@ -1,6 +1,6 @@
-# R/fetch_articles.R
-# ------------------
-# ライブラリ（Actions側で setup-r-dependencies により事前インストール）
+
+# R/fetch_articles.R (Qiita Atom対応版)
+# ------------------------------------------------------------
 library(tidyRSS)
 library(dplyr)
 library(purrr)
@@ -11,18 +11,14 @@ library(jsonlite)
 library(rvest)
 library(urltools)
 library(tibble)
+library(xml2)
 
-`%||%` <- function(a, b) {
-  # a が長さベクトルの場合も扱えるように
-  if (length(a) == 0) return(b)
-  a <- ifelse(is.na(a) | a == "", b, a)
-  a
-}
+`%||%` <- function(a, b) { if (length(a) == 0) return(b); ifelse(is.na(a) | a == "", b, a) }
 
 # 日本語検知（ベクトル対応）
 is_japanese <- function(x) {
   x <- ifelse(is.na(x), "", x)
-  str_detect(x, "[\\p{Hiragana}\\p{Katakana}\\p{Han}]")
+  stringr::str_detect(x, "[\\p{Hiragana}\\p{Katakana}\\p{Han}]")
 }
 
 # R関連キーワード & 除外ワード（誤検出抑制）
@@ -67,45 +63,87 @@ pick_first <- function(dat, candidates, default = "") {
   rep(default, nrow(dat))
 }
 
-# 安全な取得
-fetch_one <- function(src, feed_url) {
-  df <- tryCatch(tidyRSS::tidyfeed(feed_url), error = function(e) tibble())
-  if (!nrow(df)) return(tibble())
-  out <- tibble(
-    source    = src,
-    title     = pick_first(df, c("item_title","title"), ""),
-    link      = pick_first(df, c("item_link","link"), ""),
-    summary   = pick_first(df, c("item_description","description","item_content"), ""),
-    published = pick_first(df, c("item_pub_date","pub_date"), as.character(Sys.time()))
-  ) |>
+# Atom（例：Qiita）のXMLを xml2 で直接パースするフォールバック
+parse_atom_with_xml2 <- function(feed_url, src) {
+  doc <- tryCatch(xml2::read_xml(feed_url), error = function(e) NULL)
+  if (is.null(doc)) return(tibble())
+  ns <- c(d1 = "http://www.w3.org/2005/Atom")
+  entries <- xml2::xml_find_all(doc, ".//d1:entry|.//entry", ns = ns)
+  if (!length(entries)) return(tibble())
+
+  purrr::map_dfr(entries, function(n) {
+    ttl <- xml2::xml_text(xml2::xml_find_first(n, ".//d1:title|.//title", ns = ns))
+    # rel="alternate" > url > 任意のlink の順で取得
+    lnk <- xml2::xml_attr(xml2::xml_find_first(n, ".//d1:link[@rel='alternate']", ns = ns), "href")
+    if (is.na(lnk) || !nzchar(lnk)) {
+      lnk <- xml2::xml_text(xml2::xml_find_first(n, ".//d1:url|.//url", ns = ns))
+    }
+    if (is.na(lnk) || !nzchar(lnk)) {
+      lnk <- xml2::xml_attr(xml2::xml_find_first(n, ".//d1:link|.//link", ns = ns), "href")
+    }
+    # content > summary の順で本文を取得
+    cnt <- xml2::xml_text(xml2::xml_find_first(n, ".//d1:content|.//content", ns = ns))
+    if (is.na(cnt) || !nzchar(cnt)) {
+      cnt <- xml2::xml_text(xml2::xml_find_first(n, ".//d1:summary|.//summary", ns = ns))
+    }
+    pub <- xml2::xml_text(xml2::xml_find_first(n, ".//d1:published|.//published|.//d1:updated|.//updated", ns = ns))
+
+    tibble(
+      source = src,
+      title = ttl %||% "",
+      link = lnk %||% "",
+      summary = cnt %||% "",
+      published = pub %||% as.character(Sys.time())
+    )
+  }) |>
     mutate(
       published = suppressWarnings(lubridate::as_datetime(published)),
       published = if_else(is.na(published), Sys.time(), published)
     ) |>
     filter(nzchar(link)) |>
     distinct(link, .keep_all = TRUE)
+}
+
+# 安全な取得：まず tidyRSS、リンクが空なら Atom フォールバック
+fetch_one <- function(src, feed_url) {
+  df <- tryCatch(tidyRSS::tidyfeed(feed_url), error = function(e) tibble())
+  out <- tibble()
+  if (nrow(df)) {
+    out <- tibble(
+      source    = src,
+      title     = pick_first(df, c("item_title","title","entry_title"), ""),
+      link      = pick_first(df, c("item_link","link","entry_link"), ""),
+      summary   = pick_first(df, c("item_description","description","item_content","entry_content"), ""),
+      published = pick_first(df, c("item_pub_date","pub_date","entry_published","entry_updated"), as.character(Sys.time()))
+    ) |>
+      mutate(
+        published = suppressWarnings(lubridate::as_datetime(published)),
+        published = if_else(is.na(published), Sys.time(), published)
+      ) |>
+      filter(nzchar(link)) |>
+      distinct(link, .keep_all = TRUE)
+  }
+  # tidyRSS でリンクが取れないケース（Qiita等）は xml2 で補完
+  if (!nrow(out) || all(!nzchar(out$link))) {
+    out <- parse_atom_with_xml2(feed_url, src)
+  }
   out
 }
 
 # ------------------ フィード定義 ------------------
-# Qiita タグRSS（/tags/r/feed.atom）
-qiita_feed <- tibble(
+# Qiita は /tags/r/feed.atom と /tags/r/feed の両方に対応
+qiita_feeds <- tibble(
   source = "Qiita",
-  url    = "https://qiita.com/tags/r/feed.atom"
+  url    = c("https://qiita.com/tags/r/feed.atom", "https://qiita.com/tags/r/feed")
 )
 # Zenn R トピック
-zenn_feed <- tibble(
-  source = "Zenn",
-  url    = "https://zenn.dev/topics/r/feed"
-)
-# はてなキーワードRSS（R関連キーワード）
+zenn_feed <- tibble(source = "Zenn", url = "https://zenn.dev/topics/r/feed")
+# はてな：キーワードRSS
 hatena_keywords <- c("R言語","R","tidyverse","ggplot2","dplyr","Shiny")
-hatena_feeds <- tibble(
-  source = "HatenaKeyword",
-  url    = paste0("https://b.hatena.ne.jp/q/", URLencode(hatena_keywords), "?mode=rss")
-)
+hatena_feeds <- tibble(source = "HatenaKeyword",
+  url = paste0("https://b.hatena.ne.jp/q/", URLencode(hatena_keywords), "?mode=rss"))
 
-feeds <- dplyr::bind_rows(qiita_feed, zenn_feed, hatena_feeds)
+feeds <- dplyr::bind_rows(qiita_feeds, zenn_feed, hatena_feeds)
 
 # ------------------ 収集 ------------------
 articles <- pmap_dfr(feeds, ~ fetch_one(..1, ..2))
