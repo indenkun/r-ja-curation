@@ -1,10 +1,11 @@
+
 name: build-and-deploy
 
 on:
   push:
     branches: [ main ]
   schedule:
-    # JST 0:00 に相当（UTC 15:00 前日）
+    # JST 0:00 毎日実行（UTC 15:00）
     - cron: "0 15 * * *"
   workflow_dispatch:
 
@@ -24,11 +25,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # - name: Install frontend deps (optional)
-      #   run: npm ci
-      # - name: Build frontend (optional)
-      #   run: npm run build
-
       - name: Setup R
         uses: r-lib/actions/setup-r@v2
         with:
@@ -37,18 +33,26 @@ jobs:
       - name: Install system deps for R packages
         run: |
           sudo apt-get update
-          sudo apt-get install -y \
-            libcurl4-openssl-dev libxml2-dev libssl-dev \
-            libfontconfig1-dev libfreetype6-dev libharfbuzz-dev \
-            libfribidi-dev libpng-dev libtiff5-dev libjpeg-dev
+          sudo apt-get install -y             libcurl4-openssl-dev libxml2-dev libssl-dev             libfontconfig1-dev libfreetype6-dev libharfbuzz-dev             libfribidi-dev libpng-dev libtiff5-dev libjpeg-dev
 
-      - name: Install R packages
+      - name: Install R packages (with r-universe fallback for shinylive)
         run: |
           Rscript -e 'install.packages(c(
             "jsonlite","dplyr","purrr","stringr","lubridate","tibble",
             "xml2","rvest","urltools","httr2","tidyRSS",
-            "bslib","shiny","shinylive"
+            "bslib","shiny"
           ), repos="https://cloud.r-project.org")'
+          Rscript -e 'if (!requireNamespace("shinylive", quietly = TRUE)) {
+            message("Installing shinylive from r-universe ...");
+            install.packages("shinylive",
+              repos = c("https://posit-dev.r-universe.dev", "https://cloud.r-project.org")
+            )
+          }'
+          Rscript -e 'pak <- as.character(utils::packageVersion("shinylive")); cat("shinylive version:", pak, "
+")'
+
+      - name: Ensure shinylive assets (optional but recommended)
+        run: Rscript -e 'shinylive::assets_info(); shinylive::assets_ensure()'
 
       - name: Generate JSON (articles)
         run: Rscript R/fetch_articles.R
