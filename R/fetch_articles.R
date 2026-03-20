@@ -1,5 +1,5 @@
 
-# R/fetch_articles.R (Qiita Atom対応版)
+# R/fetch_articles.R（Hatena検索条件とBing News RSS追加版）
 # ------------------------------------------------------------
 library(tidyRSS)
 library(dplyr)
@@ -15,11 +15,9 @@ library(xml2)
 
 `%||%` <- function(a, b) { if (length(a) == 0) return(b); ifelse(is.na(a) | a == "", b, a) }
 
+# ===== ユーティリティ =====
 # 日本語検知（ベクトル対応）
-is_japanese <- function(x) {
-  x <- ifelse(is.na(x), "", x)
-  stringr::str_detect(x, "[\\p{Hiragana}\\p{Katakana}\\p{Han}]")
-}
+is_japanese <- function(x) { x <- ifelse(is.na(x), "", x); stringr::str_detect(x, "[\\p{Hiragana}\\p{Katakana}\\p{Han}]") }
 
 # R関連キーワード & 除外ワード（誤検出抑制）
 r_keywords <- c("R言語","tidyverse","ggplot2","dplyr","tidyr","readr","purrr","stringr",
@@ -75,17 +73,10 @@ parse_atom_with_xml2 <- function(feed_url, src) {
     ttl <- xml2::xml_text(xml2::xml_find_first(n, ".//d1:title|.//title", ns = ns))
     # rel="alternate" > url > 任意のlink の順で取得
     lnk <- xml2::xml_attr(xml2::xml_find_first(n, ".//d1:link[@rel='alternate']", ns = ns), "href")
-    if (is.na(lnk) || !nzchar(lnk)) {
-      lnk <- xml2::xml_text(xml2::xml_find_first(n, ".//d1:url|.//url", ns = ns))
-    }
-    if (is.na(lnk) || !nzchar(lnk)) {
-      lnk <- xml2::xml_attr(xml2::xml_find_first(n, ".//d1:link|.//link", ns = ns), "href")
-    }
-    # content > summary の順で本文を取得
+    if (is.na(lnk) || !nzchar(lnk)) lnk <- xml2::xml_text(xml2::xml_find_first(n, ".//d1:url|.//url", ns = ns))
+    if (is.na(lnk) || !nzchar(lnk)) lnk <- xml2::xml_attr(xml2::xml_find_first(n, ".//d1:link|.//link", ns = ns), "href")
     cnt <- xml2::xml_text(xml2::xml_find_first(n, ".//d1:content|.//content", ns = ns))
-    if (is.na(cnt) || !nzchar(cnt)) {
-      cnt <- xml2::xml_text(xml2::xml_find_first(n, ".//d1:summary|.//summary", ns = ns))
-    }
+    if (is.na(cnt) || !nzchar(cnt)) cnt <- xml2::xml_text(xml2::xml_find_first(n, ".//d1:summary|.//summary", ns = ns))
     pub <- xml2::xml_text(xml2::xml_find_first(n, ".//d1:published|.//published|.//d1:updated|.//updated", ns = ns))
 
     tibble(
@@ -123,29 +114,63 @@ fetch_one <- function(src, feed_url) {
       filter(nzchar(link)) |>
       distinct(link, .keep_all = TRUE)
   }
-  # tidyRSS でリンクが取れないケース（Qiita等）は xml2 で補完
   if (!nrow(out) || all(!nzchar(out$link))) {
     out <- parse_atom_with_xml2(feed_url, src)
   }
   out
 }
 
-# ------------------ フィード定義 ------------------
-# Qiita は /tags/r/feed.atom と /tags/r/feed の両方に対応
+# ===== フィード定義 =====
+# 1) Qiita タグRSS（/tags/r/feed.atom と /tags/r/feed）
 qiita_feeds <- tibble(
   source = "Qiita",
   url    = c("https://qiita.com/tags/r/feed.atom", "https://qiita.com/tags/r/feed")
 )
-# Zenn R トピック
+
+# 2) Zenn R トピック
 zenn_feed <- tibble(source = "Zenn", url = "https://zenn.dev/topics/r/feed")
-# はてな：キーワードRSS
-hatena_keywords <- c("R言語","R","tidyverse","ggplot2","dplyr","Shiny")
-hatena_feeds <- tibble(source = "HatenaKeyword",
-  url = paste0("https://b.hatena.ne.jp/q/", URLencode(hatena_keywords), "?mode=rss"))
 
-feeds <- dplyr::bind_rows(qiita_feeds, zenn_feed, hatena_feeds)
+# 3) はてな：キーワードRSS（※ "R" 単独は除外）
+#    期間=直近1年、ブクマ閾値>=1、並び=新着（recent）
+#    /search/text?q=...&mode=rss&date_begin=YYYY-MM-DD&date_end=YYYY-MM-DD&threshold=1&sort=recent
+jst_today <- with_tz(Sys.time(), "Asia/Tokyo")
+start_date <- format(as.Date(jst_today) - 365, "%Y-%m-%d")
+end_date   <- format(as.Date(jst_today), "%Y-%m-%d")
 
-# ------------------ 収集 ------------------
+hatena_keywords <- c("R言語","tidyverse","ggplot2","dplyr","Shiny")  # ← "R" を削除
+hatena_feeds <- tibble(
+  source = "HatenaKeyword",
+  url    = paste0(
+    "https://b.hatena.ne.jp/search/text?q=",
+    URLencode(hatena_keywords),
+    "&mode=rss&date_begin=", start_date,
+    "&date_end=", end_date,
+    "&threshold=1&sort=recent"
+  )
+)
+
+# 4) Bing News RSS（R関連の代表的キーワード）
+#    公式には &format=rss が利用可能（ニュース検索）
+#    期間の厳密指定はURLだけでは難しいため、取得後に日付フィルタを適用
+bing_queries <- c(
+  "R 言語",
+  "R tidyverse",
+  "ggplot2",
+  "R Shiny"
+)
+
+bing_feeds <- tibble(
+  source = "BingNews",
+  url    = paste0(
+    "https://www.bing.com/news/search?q=",
+    URLencode(bing_queries),
+    "&format=rss"
+  )
+)
+
+feeds <- dplyr::bind_rows(qiita_feeds, zenn_feed, hatena_feeds, bing_feeds)
+
+# ===== 収集 =====
 articles <- pmap_dfr(feeds, ~ fetch_one(..1, ..2))
 
 if (!nrow(articles)) {
@@ -156,15 +181,23 @@ if (!nrow(articles)) {
   quit(save = "no")
 }
 
+# ===== 後処理 =====
+# 期間フィルタ：特に Bing News を想定し、直近365日に限定
+articles <- articles |>
+  mutate(published = suppressWarnings(lubridate::as_datetime(published))) |>
+  mutate(published = if_else(is.na(published), Sys.time(), published)) |>
+  filter(published >= (Sys.time() - lubridate::days(365)))
+
 # 日本語/R関連フィルタ + 追加情報
 articles <- articles |>
   filter(is_japanese(title) | is_japanese(summary) | is_r_related(title, summary)) |>
   mutate(
-    hb_count = map_int(link, ~ { Sys.sleep(0.3); get_hatena_count(.x) }),
+    hb_count = map_int(link, ~ { Sys.sleep(0.2); get_hatena_count(.x) }),
     thumb    = map_chr(link, ~ { Sys.sleep(0.1); get_og_image(.x) }),
     domain   = domain(link)
   ) |>
-  arrange(desc(hb_count), desc(published))
+  arrange(desc(hb_count), desc(published)) |>
+  distinct(link, .keep_all = TRUE)
 
 articles <- articles |> slice_head(n = 500)
 
