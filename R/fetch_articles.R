@@ -1,6 +1,6 @@
 
-# R/fetch_articles.R（キーワード更新：Shiny除外 + tidymodels/readr/stringr/rlang追加）
-# ---------------------------------------------------------------------------------
+# R/fetch_articles.R（Shiny除外 + 追加語 + feeds列順 + JSON出力）
+# ------------------------------------------------------------
 library(tidyRSS)
 library(dplyr)
 library(purrr)
@@ -115,7 +115,7 @@ fetch_one <- function(src, feed_url, q) {
   out
 }
 
-# ------------------ フィード定義 ------------------
+# ---------- フィード定義 ----------
 qiita_feeds <- tibble(
   source = "Qiita",
   query  = "r",
@@ -123,7 +123,7 @@ qiita_feeds <- tibble(
 )
 zenn_feeds <- tibble(source = "Zenn", query = "r", url = "https://zenn.dev/topics/r/feed")
 
-# ★ はてなキーワード（Shinyを削除し、tidymodels/readr/stringr/rlang を追加）
+# はてな（Shiny除外済み） + 追加語
 hatena_keywords <- c("R言語","tidyverse","ggplot2","dplyr","tidymodels","readr","stringr","rlang")
 
 hatena_q <- tibble(
@@ -155,7 +155,7 @@ hatena_search <- tibble(
 try_q <- tryCatch(tidyRSS::tidyfeed(hatena_q$url[[1]]), error = function(e) tibble())
 hatena_feeds <- if (nrow(try_q)) hatena_q else hatena_search
 
-# ★ Bing クエリも追加・整備（Shinyを含めない）
+# Bing News
 bing_queries <- c("R 言語","R tidyverse","ggplot2","tidymodels","readr","stringr","rlang")
 
 bing_feeds <- tibble(
@@ -165,9 +165,9 @@ bing_feeds <- tibble(
 )
 
 feeds <- dplyr::bind_rows(qiita_feeds, zenn_feeds, hatena_feeds, bing_feeds) |>
-  dplyr::select(source, url, query)
+  dplyr::select(source, url, query)   # ★ pmap の引数順を保証
 
-# ------------------ 収集 ------------------
+# ---------- 収集 ----------
 articles <- pmap_dfr(feeds, ~ fetch_one(..1, ..2, ..3))
 
 if (!nrow(articles)) {

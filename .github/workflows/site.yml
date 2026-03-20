@@ -1,0 +1,79 @@
+name: build-and-deploy
+
+on:
+  push:
+    branches: [ main ]
+  schedule:
+    # JST 0:00 に相当（UTC 15:00 前日）
+    - cron: "0 15 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: 'pages'
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Node.js 24 を利用（必要に応じて npm のキャッシュ・ビルドステップを追加）
+      - name: Setup Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+      # - name: Install frontend deps (optional)
+      #   run: npm ci
+      # - name: Build frontend (optional)
+      #   run: npm run build
+
+      - name: Setup R
+        uses: r-lib/actions/setup-r@v2
+        with:
+          use-public-rspm: true
+
+      - name: Install system deps for R packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libcurl4-openssl-dev libxml2-dev libssl-dev \
+            libfontconfig1-dev libfreetype6-dev libharfbuzz-dev \
+            libfribidi-dev libpng-dev libtiff5-dev libjpeg-dev
+
+      - name: Install R packages
+        run: |
+          Rscript -e 'install.packages(c(
+            "jsonlite","dplyr","purrr","stringr","lubridate","tibble",
+            "xml2","rvest","urltools","httr2","tidyRSS",
+            "bslib","shiny","shinylive"
+          ), repos="https://cloud.r-project.org")'
+
+      - name: Generate JSON (articles)
+        run: Rscript R/fetch_articles.R
+
+      - name: Export with Shinylive (sets <title>)
+        run: Rscript build.R
+
+      - name: Upload artifact (docs/)
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
