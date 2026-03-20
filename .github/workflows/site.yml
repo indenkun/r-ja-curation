@@ -24,12 +24,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # Node.js 24 を利用（必要に応じて npm のキャッシュ・ビルドステップを追加）
-      - name: Setup Node.js 24
-        uses: actions/setup-node@v4
-        with:
-          node-version: '24'
-          cache: 'npm'
       # - name: Install frontend deps (optional)
       #   run: npm ci
       # - name: Build frontend (optional)
