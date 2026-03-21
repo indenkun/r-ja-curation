@@ -1,10 +1,11 @@
+
 name: build-and-deploy
 
 on:
   push:
     branches: [ main ]
   schedule:
-    # JST 0:00 (UTC 15:00)
+    # JST 0:00 毎日実行（UTC 15:00）
     - cron: "0 15 * * *"
   workflow_dispatch:
 
@@ -32,11 +33,7 @@ jobs:
       - name: Install system dependencies for R packages
         run: |
           sudo apt-get update
-          sudo apt-get install -y \
-            libcurl4-openssl-dev libxml2-dev libssl-dev \
-            libfontconfig1-dev libfreetype6-dev libharfbuzz-dev \
-            libfribidi-dev libpng-dev libtiff5-dev libjpeg-dev \
-            libarchive-dev
+          sudo apt-get install -y             libcurl4-openssl-dev libxml2-dev libssl-dev             libfontconfig1-dev libfreetype6-dev libharfbuzz-dev             libfribidi-dev libpng-dev libtiff5-dev libjpeg-dev             libarchive-dev
 
       - name: Install R packages (CRAN) and ensure shinylive via r-universe
         run: |
@@ -51,11 +48,29 @@ jobs:
               repos = c("https://posit-dev.r-universe.dev", "https://cloud.r-project.org")
             )
           }'
-          Rscript -e 'cat("archive version:", as.character(utils::packageVersion("archive")), "\n")'
-          Rscript -e 'cat("shinylive version:", as.character(utils::packageVersion("shinylive")), "\n")'
+          Rscript -e 'cat("archive version:", as.character(utils::packageVersion("archive")), "
+")'
+          Rscript -e 'cat("shinylive version:", as.character(utils::packageVersion("shinylive")), "
+")'
 
-      - name: Ensure shinylive assets
-        run: Rscript -e 'shinylive::assets_info(); shinylive::assets_ensure()'
+      - name: Ensure shinylive assets (resilient)
+        run: |
+          Rscript - <<'RSCRIPT'
+          if (!requireNamespace("shinylive", quietly = TRUE)) stop("shinylive not installed")
+          ok <- TRUE
+          tryCatch({ shinylive::assets_info(); shinylive::assets_ensure() }, error = function(e) {
+            message("assets_info/ensure failed: ", conditionMessage(e))
+            ok <<- FALSE
+          })
+          if (!ok) {
+            cache_dir <- path.expand("~/.cache/shinylive")
+            message("Resetting shinylive cache at ", cache_dir)
+            unlink(cache_dir, recursive = TRUE, force = TRUE)
+            dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
+            shinylive::assets_ensure()
+            shinylive::assets_info()
+          }
+          RSCRIPT
 
       - name: Generate JSON
         run: Rscript R/fetch_articles.R
