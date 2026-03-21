@@ -48,10 +48,8 @@ jobs:
               repos = c("https://posit-dev.r-universe.dev", "https://cloud.r-project.org")
             )
           }'
-          Rscript -e 'cat("archive version:", as.character(utils::packageVersion("archive")), "
-")'
-          Rscript -e 'cat("shinylive version:", as.character(utils::packageVersion("shinylive")), "
-")'
+          Rscript -e 'cat("archive version:", as.character(utils::packageVersion("archive")), "\n")'
+          Rscript -e 'cat("shinylive version:", as.character(utils::packageVersion("shinylive")), "\n")'
 
       - name: Ensure shinylive assets (resilient)
         run: |
