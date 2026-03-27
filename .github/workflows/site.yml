@@ -1,86 +1,38 @@
 
-name: build-and-deploy
-
+name: build-deploy
 on:
+  schedule:
+    - cron: "0 15 * * *"
   push:
     branches: [ main ]
-  schedule:
-    # JST 0:00 毎日実行（UTC 15:00）
-    - cron: "0 15 * * *"
   workflow_dispatch:
-
 permissions:
   contents: read
   pages: write
   id-token: write
-
 concurrency:
-  group: 'pages'
+  group: pages
   cancel-in-progress: true
-
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup R
-        uses: r-lib/actions/setup-r@v2
-        with:
-          use-public-rspm: true
-
-      - name: Install system dependencies for R packages
+      - uses: actions/checkout@v4
+      - uses: r-lib/actions/setup-r@v2
+        with: { use-public-rspm: true }
+      - name: Sys deps
+        run: sudo apt-get update && sudo apt-get install -y libarchive-dev libcurl4-openssl-dev libxml2-dev libssl-dev
+      - name: Install R pkgs
         run: |
-          sudo apt-get update
-          sudo apt-get install -y             libcurl4-openssl-dev libxml2-dev libssl-dev             libfontconfig1-dev libfreetype6-dev libharfbuzz-dev             libfribidi-dev libpng-dev libtiff5-dev libjpeg-dev             libarchive-dev
-
-      - name: Install R packages (CRAN) and ensure shinylive via r-universe
-        run: |
-          Rscript -e 'install.packages(c(
-            "jsonlite","dplyr","purrr","stringr","lubridate","tibble",
-            "xml2","rvest","urltools","httr2","tidyRSS",
-            "bslib","shiny","archive"
-          ), repos="https://cloud.r-project.org")'
-          Rscript -e 'if (!requireNamespace("shinylive", quietly = TRUE)) {
-            message("Installing shinylive from r-universe ...");
-            install.packages("shinylive",
-              repos = c("https://posit-dev.r-universe.dev", "https://cloud.r-project.org")
-            )
-          }'
-          Rscript -e 'cat("archive version:", as.character(utils::packageVersion("archive")), "\n")'
-          Rscript -e 'cat("shinylive version:", as.character(utils::packageVersion("shinylive")), "\n")'
-
-      - name: Ensure shinylive assets (resilient)
-        run: |
-          Rscript - <<'RSCRIPT'
-          if (!requireNamespace("shinylive", quietly = TRUE)) stop("shinylive not installed")
-          ok <- TRUE
-          tryCatch({ shinylive::assets_info(); shinylive::assets_ensure() }, error = function(e) {
-            message("assets_info/ensure failed: ", conditionMessage(e))
-            ok <<- FALSE
-          })
-          if (!ok) {
-            cache_dir <- path.expand("~/.cache/shinylive")
-            message("Resetting shinylive cache at ", cache_dir)
-            unlink(cache_dir, recursive = TRUE, force = TRUE)
-            dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
-            shinylive::assets_ensure()
-            shinylive::assets_info()
-          }
-          RSCRIPT
-
-      - name: Generate JSON
+          Rscript -e 'install.packages(c("jsonlite","dplyr","purrr","stringr","lubridate","tibble","xml2","rvest","urltools","httr2","tidyRSS","bslib","shiny","archive"), repos="https://cloud.r-project.org")'
+          Rscript -e 'if(!requireNamespace("shinylive",quiet=TRUE)) install.packages("shinylive", repos=c("https://posit-dev.r-universe.dev","https://cloud.r-project.org"))'
+      - name: Fetch
         run: Rscript R/fetch_articles.R
-
-      - name: Export with shinylive
+      - name: Export
         run: Rscript build.R
-
-      - name: Upload artifact (docs)
+      - name: Upload
         uses: actions/upload-pages-artifact@v3
-        with:
-          path: docs
-
+        with: { path: docs }
   deploy:
     needs: build
     runs-on: ubuntu-latest
@@ -88,6 +40,6 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - name: Deploy to GitHub Pages
+      - name: Deploy
         id: deployment
         uses: actions/deploy-pages@v4
