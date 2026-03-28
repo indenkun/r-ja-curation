@@ -1,4 +1,4 @@
-# app/app.R
+
 library(shiny)
 library(bslib)
 library(jsonlite)
@@ -34,7 +34,8 @@ server <- function(input, output, session){
    dat(list(updated_at=j$updated_at%||%'',items=items))
  })
  output$domain_ui<-renderUI({x<-dat()$items;if(!nrow(x))return(NULL);selectizeInput('domain','domain',choices=sort(unique(x$domain)),multiple=TRUE)})
- output$source_ui<-renderUI({x<-dat()$items;if(!nrow(x))return(NULL);checkboxGroupInput('source','source',choices=sort(unique(x$source)),selected=sort(unique(x$source)))})
+ output$source_ui<-renderUI({x<-dat()$items;if(!nrow(x))return(NULL);
+   checkboxGroupInput('source','source',choices=sort(unique(x$source)),selected=sort(unique(x$source))) })
  filtered<-reactive({x<-dat()$items;if(!nrow(x))return(x)
    if(length(input$source)) x<-filter(x, source %in% input$source)
    if(length(input$domain)) x<-filter(x, domain %in% input$domain)

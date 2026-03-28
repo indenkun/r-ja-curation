@@ -59,7 +59,7 @@ parse_atom_with_xml2 <- function(feed_url, src, q) {
   ns <- c(d1 = "http://www.w3.org/2005/Atom")
   entries <- xml2::xml_find_all(doc, ".//d1:entry|.//entry", ns = ns)
   if (!length(entries)) return(tibble())
-  
+
   purrr::map_dfr(entries, function(n) {
     ttl <- xml2::xml_text(xml2::xml_find_first(n, ".//d1:title|.//title", ns = ns))
     lnk <- xml2::xml_attr(xml2::xml_find_first(n, ".//d1:link[@rel='alternate']", ns = ns), "href")
@@ -68,7 +68,7 @@ parse_atom_with_xml2 <- function(feed_url, src, q) {
     cnt <- xml2::xml_text(xml2::xml_find_first(n, ".//d1:content|.//content", ns = ns))
     if (is.na(cnt) || !nzchar(cnt)) cnt <- xml2::xml_text(xml2::xml_find_first(n, ".//d1:summary|.//summary", ns = ns))
     pub <- xml2::xml_text(xml2::xml_find_first(n, ".//d1:published|.//published|.//d1:updated|.//updated", ns = ns))
-    
+
     tibble(
       source = src,
       title = ttl %||% "",
@@ -77,13 +77,10 @@ parse_atom_with_xml2 <- function(feed_url, src, q) {
       published = pub %||% as.character(Sys.time()),
       hit_keywords = q
     )
-  }) |>
-    mutate(
+  }) |> mutate(
       published = suppressWarnings(lubridate::as_datetime(published)),
       published = if_else(is.na(published), Sys.time(), published)
-    ) |>
-    filter(nzchar(link)) |>
-    distinct(link, .keep_all = TRUE)
+    ) |> filter(nzchar(link)) |> distinct(link, .keep_all = TRUE)
 }
 
 fetch_one <- function(src, feed_url, q) {
@@ -98,115 +95,91 @@ fetch_one <- function(src, feed_url, q) {
       summary   = pick_first(df, c("item_description","description","item_content","entry_content"), ""),
       published = pick_first(df, c("item_pub_date","pub_date","entry_published","entry_updated"), as.character(Sys.time())),
       hit_keywords = q
-    ) |>
-      mutate(
+    ) |> mutate(
         published = suppressWarnings(lubridate::as_datetime(published)),
         published = if_else(is.na(published), Sys.time(), published)
-      ) |>
-      filter(nzchar(link)) |>
-      distinct(link, .keep_all = TRUE)
+      ) |> filter(nzchar(link)) |> distinct(link, .keep_all = TRUE)
   }
-  if (!nrow(out) || all(!nzchar(out$link))) {
-    out <- parse_atom_with_xml2(feed_url, src, q)
-  }
+  if (!nrow(out) || all(!nzchar(out$link))) out <- parse_atom_with_xml2(feed_url, src, q)
   out
 }
 
-# ------------------ フィード定義 ------------------
+# Feeds definitions etc...
 qiita_feeds <- tibble(
   source = "Qiita",
   query  = "r",
   url    = c("https://qiita.com/tags/r/feed.atom", "https://qiita.com/tags/r/feed")
 )
-zenn_feeds <- tibble(source = "Zenn", query = "r", url = "https://zenn.dev/topics/r/feed")
 
-# ★ はてなキーワード（Shinyを削除し、tidymodels/readr/stringr/rlang を追加）
+zenn_feeds <- tibble(source="Zenn", query="r", url="https://zenn.dev/topics/r/feed")
+
 hatena_keywords <- c("R言語","tidyverse","ggplot2","dplyr","tidymodels","readr","stringr","rlang")
 
 hatena_q <- tibble(
-  source = "HatenaKeyword",
-  query  = hatena_keywords,
-  url    = paste0(
-    "https://b.hatena.ne.jp/q/",
-    URLencode(hatena_keywords),
+  source="HatenaKeyword",
+  query=hatena_keywords,
+  url=paste0(
+    "https://b.hatena.ne.jp/q/", URLencode(hatena_keywords),
     "?mode=rss&target=all&sort=recent&users=1&date_range=y&safe=on"
   )
 )
 
 jst_today  <- with_tz(Sys.time(), "Asia/Tokyo")
 start_date <- format(as.Date(jst_today) - 365, "%Y-%m-%d")
-end_date   <- format(as.Date(jst_today),       "%Y-%m-%d")
+end_date   <- format(as.Date(jst_today), "%Y-%m-%d")
 
 hatena_search <- tibble(
-  source = "HatenaKeyword",
-  query  = hatena_keywords,
-  url    = paste0(
-    "https://b.hatena.ne.jp/search/text?q=",
-    URLencode(hatena_keywords),
+  source="HatenaKeyword",
+  query=hatena_keywords,
+  url=paste0(
+    "https://b.hatena.ne.jp/search/text?q=", URLencode(hatena_keywords),
     "&mode=rss&date_begin=", start_date,
     "&date_end=", end_date,
     "&threshold=1&sort=recent"
   )
 )
 
-try_q <- tryCatch(tidyRSS::tidyfeed(hatena_q$url[[1]]), error = function(e) tibble())
-hatena_feeds <- if (nrow(try_q)) hatena_q else hatena_search
+try_q <- tryCatch(tidyRSS::tidyfeed(hatena_q$url[[1]]), error=function(e)tibble())
+hatena_feeds <- if(nrow(try_q)) hatena_q else hatena_search
 
-# ★ Bing クエリも追加・整備（Shinyを含めない）
 bing_queries <- c("R 言語","R tidyverse","ggplot2","tidymodels","readr","stringr","rlang")
 
 bing_feeds <- tibble(
-  source = "BingNews",
-  query  = bing_queries,
-  url    = paste0("https://www.bing.com/news/search?q=", URLencode(bing_queries), "&format=rss")
+  source="BingNews",
+  query=bing_queries,
+  url=paste0("https://www.bing.com/news/search?q=", URLencode(bing_queries), "&format=rss")
 )
 
-feeds <- dplyr::bind_rows(qiita_feeds, zenn_feeds, hatena_feeds, bing_feeds) |>
-  dplyr::select(source, url, query)
+feeds <- bind_rows(qiita_feeds, zenn_feeds, hatena_feeds, bing_feeds) |> select(source, url, query)
 
-# ------------------ 収集 ------------------
 articles <- pmap_dfr(feeds, ~ fetch_one(..1, ..2, ..3))
 
 if (!nrow(articles)) {
-  message("No articles fetched. Exiting with empty JSON.")
-  dir.create("app/data", recursive = TRUE, showWarnings = FALSE)
-  write_json(list(items = list(), updated_at = as.character(Sys.time())), "app/data/articles.json",
-             auto_unbox = TRUE, pretty = TRUE)
-  quit(save = "no")
+  message("No articles fetched.")
+  write_json(list(items=list(),updated_at=as.character(Sys.time())),"app/data/articles.json",auto_unbox=TRUE,pretty=TRUE)
+  quit(save='no')
 }
 
-articles <- articles |>
-  mutate(published = suppressWarnings(lubridate::as_datetime(published))) |>
-  mutate(published = if_else(is.na(published), Sys.time(), published)) |>
-  filter(published >= (Sys.time() - lubridate::days(365))) |>
-  filter(is_japanese(title) | is_japanese(summary) | is_r_related(title, summary)) |>
+articles <- articles |> 
+  mutate(published=suppressWarnings(lubridate::as_datetime(published))) |> 
+  mutate(published=if_else(is.na(published),Sys.time(),published)) |> 
+  filter(published >= (Sys.time() - lubridate::days(365))) |> 
+  filter(is_japanese(title) | is_japanese(summary) | is_r_related(title,summary)) |> 
   mutate(
-    hb_count = map_int(link, ~ { Sys.sleep(0.2); get_hatena_count(.x) }),
-    thumb    = map_chr(link, ~ { Sys.sleep(0.1); get_og_image(.x) }),
+    hb_count = map_int(link, ~{Sys.sleep(0.2); get_hatena_count(.x)}),
+    thumb    = map_chr(link, ~{Sys.sleep(0.1); get_og_image(.x)}),
     domain   = domain(link)
-  ) |>
-  arrange(desc(published)) |>
-  group_by(link) |>
-  summarise(
-    title   = dplyr::first(title),
-    summary = dplyr::first(summary),
-    published = dplyr::first(published),
-    source  = dplyr::first(source),
-    domain  = dplyr::first(domain),
-    hb_count = suppressWarnings(max(hb_count, na.rm = TRUE)),
-    thumb   = dplyr::first(thumb),
-    hit_keywords = paste(unique(na.omit(hit_keywords)), collapse = ", "),
-    .groups = "drop"
-  ) |>
-  arrange(desc(hb_count), desc(published)) |>
-  slice_head(n = 500)
+  ) |> arrange(desc(published)) |> 
+  group_by(link) |> summarise(
+    title=first(title), summary=first(summary), published=first(published),
+    source=first(source), domain=first(domain),
+    hb_count=suppressWarnings(max(hb_count,na.rm=TRUE)),
+    thumb=first(thumb), hit_keywords=paste(unique(na.omit(hit_keywords)),collapse=","), .groups='drop'
+  ) |> arrange(desc(hb_count),desc(published)) |> slice_head(n=500)
 
-# JSON 出力
-dir.create("app/data", recursive = TRUE, showWarnings = FALSE)
 payload <- list(
-  updated_at = as.character(with_tz(Sys.time(), "Asia/Tokyo")),
-  items = articles |> mutate(published = as.character(with_tz(published, "Asia/Tokyo")))
+  updated_at=as.character(with_tz(Sys.time(),"Asia/Tokyo")),
+  items=articles |> mutate(published=as.character(with_tz(published,"Asia/Tokyo")))
 )
-write_json(payload, "app/data/articles.json", auto_unbox = TRUE, pretty = TRUE)
-
+write_json(payload,"app/data/articles.json",auto_unbox=TRUE,pretty=TRUE)
 message("Done: app/data/articles.json")

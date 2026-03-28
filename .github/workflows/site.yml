@@ -1,3 +1,4 @@
+
 name: build-deploy
 on:
   schedule:
@@ -18,20 +19,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: r-lib/actions/setup-r@v2
-        with: { use-public-rspm: true }
-      - name: Sys deps
+        with:
+          use-public-rspm: true
+      - name: System deps
         run: sudo apt-get update && sudo apt-get install -y libarchive-dev libcurl4-openssl-dev libxml2-dev libssl-dev
-      - name: Install R pkgs
+      - name: Install R packages
         run: |
           Rscript -e 'install.packages(c("jsonlite","dplyr","purrr","stringr","lubridate","tibble","xml2","rvest","urltools","httr2","tidyRSS","bslib","shiny","archive"), repos="https://cloud.r-project.org")'
-          Rscript -e 'if(!requireNamespace("shinylive",quiet=TRUE)) install.packages("shinylive", repos=c("https://posit-dev.r-universe.dev","https://cloud.r-project.org"))'
-      - name: Fetch
+          Rscript -e 'if(!requireNamespace("shinylive")) install.packages("shinylive", repos="https://cloud.r-project.org")'
+      - name: Fetch articles
         run: Rscript R/fetch_articles.R
-      - name: Export
+      - name: Export Shinylive
         run: Rscript build.R
-      - name: Upload
+      - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
-        with: { path: docs }
+        with:
+          path: docs
   deploy:
     needs: build
     runs-on: ubuntu-latest
