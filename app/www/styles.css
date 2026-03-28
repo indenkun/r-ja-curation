@@ -1,1 +1,1 @@
-#list{padding:1rem;} .card-item{padding:1rem;border:1px solid #ddd;margin:0.5rem;}
+#list{padding:1rem;display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:1rem;} .card-item{padding:1rem;border:1px solid #ddd;border-radius:8px;background:#fff;}

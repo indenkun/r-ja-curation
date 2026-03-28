@@ -1,1 +1,1 @@
-# Placeholder fetch script.
+# Full RSS fetch script should be placed here. For brevity omitted.
