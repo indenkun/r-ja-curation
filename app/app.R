@@ -21,7 +21,7 @@ ui <- page_fillable(
     includeCSS("www/styles.css")
   ),
   
-  # ★ 画面右上に GitHub リンク
+  # ★ GitHub リンク（右上固定）
   tags$div(
     style = "
       position: fixed; top: 12px; right: 20px; z-index: 9999;
@@ -40,7 +40,11 @@ ui <- page_fillable(
       textInput("q", "検索", placeholder = "例: ggplot2"),
       selectInput("sort", "表示順", c("ブックマーク順" = "hb", "新着順" = "new")),
       uiOutput("domain_ui"),
-      uiOutput("source_ui")
+      uiOutput("source_ui"),
+      
+      # ★★★★★ ここに「更新日時」を追加 ★★★★★
+      hr(),
+      uiOutput("updated_ui")
     ),
     div(id = "list", uiOutput("cards"))
   )
@@ -55,31 +59,45 @@ server <- function(input, output, session){
     if (inherits(j, "try-error") || is.null(j$items)) return(NULL)
     
     items <- as_tibble(j$items)
-    
     chr <- intersect(names(items),
                      c("title","summary","domain","hit_keywords","thumb","link"))
     if (nrow(items)) {
       items <- items |> mutate(across(all_of(chr), ~ as.character(tidyr::replace_na(.,""))))
     }
     
-    dat(list(updated_at = j$updated_at %||% "", items = items))
+    dat(list(
+      updated_at = j$updated_at %||% "",
+      items = items
+    ))
+  })
+  
+  # ===============================
+  # ★ 更新日時の UI（左ペイン追加）
+  # ===============================
+  output$updated_ui <- renderUI({
+    upd <- dat()$updated_at
+    if (is.null(upd) || !nzchar(upd)) return(NULL)
+    
+    tags$div(
+      style = "margin-top: 10px; font-size: 13px; color: #666;",
+      paste("最終更新:", upd)
+    )
   })
   
   output$domain_ui <- renderUI({
     x <- dat()$items
     if (!nrow(x)) return(NULL)
-    selectizeInput("domain", "domain", choices = sort(unique(x$domain)), multiple = TRUE)
+    selectizeInput("domain","domain",choices=sort(unique(x$domain)),multiple=TRUE)
   })
   
   output$source_ui <- renderUI({
     x <- dat()$items
     if (!nrow(x)) return(NULL)
-    checkboxGroupInput("source", "source",
-                       choices = sort(unique(x$source)),
-                       selected = sort(unique(x$source)))
+    checkboxGroupInput("source","source",
+                       choices=sort(unique(x$source)),
+                       selected=sort(unique(x$source)))
   })
   
-  # フィルター
   filtered <- reactive({
     x <- dat()$items
     if (!nrow(x)) return(x)
@@ -101,7 +119,6 @@ server <- function(input, output, session){
     }
   })
   
-  # カード描画（はてな風）
   output$cards <- renderUI({
     x <- filtered()
     if (!nrow(x)) return(div("該当なし"))
@@ -110,41 +127,34 @@ server <- function(input, output, session){
       it <- x[i,]
       
       tags$a(
-        href = it$link,
-        target = "_blank",
+        href = it$link, target = "_blank",
         div(
           class = "card-item",
           style = "display:flex; gap:12px;",
           
-          # ★ サムネイル
           tags$img(
             src = it$thumb %||% "",
             style = "width:96px;height:96px;object-fit:cover;border-radius:6px;"
           ),
           
-          # ★ タイトル＋概要＋タグ
           div(
             style = "flex:1;",
             
-            # タイトル
             tags$div(
               style = "font-weight:bold; font-size:16px; margin-bottom:4px;",
               it$title
             ),
             
-            # ★ 概要（summary の先頭120文字）
             tags$div(
               style = "color:#444; font-size:13px; margin-bottom:6px;",
-              paste0(substr(it$summary, 1, 120), "...")
+              paste0(substr(it$summary, 1, 120), "…")
             ),
             
-            # ★ はてなスター（hb_count）
             tags$div(
               style = "font-size:13px; color:#e08524; margin-bottom:6px;",
               paste0("★ ", it$hb_count %||% 0)
             ),
             
-            # ★ ヒットキーワード（タグ風）
             tags$div(
               style = "display:flex; flex-wrap:wrap; gap:4px;",
               lapply(strsplit(it$hit_keywords, ",")[[1]], function(k){
